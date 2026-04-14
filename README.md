@@ -126,7 +126,7 @@ Participants found in this Discussion:
 Enter comma-separated numbers of the people whose replies you want to scrape:
 ```
 
-Select people by number. The script collects every reply those people made across all pages and writes a single clean HTML file for each containing only their posts, with avatars and embedded media.
+Select one person by number. The script collects every reply that person made across all pages and writes a single clean HTML file containing only their posts, with avatars, timestamps, and embedded media.
 
 **Output structure:**
 
