@@ -1,14 +1,12 @@
 # Canvas LMS Scraper
 
-A command-line tool that exports Canvas course content to self-contained offline HTML files. It uses your browser session cookie for authentication — no Canvas API key required.
+Exports Canvas course modules to self-contained offline HTML files. Uses your browser session cookie — no Canvas API key required. Discussions, assignments, quizzes, pages, and files are all handled automatically in a single run.
 
 ---
 
 ## Requirements
 
 **Python 3.10+**
-
-Install dependencies:
 
 ```bash
 pip install requests beautifulsoup4 lxml tqdm playwright
@@ -19,30 +17,17 @@ playwright install chromium
 
 ## Usage
 
-For `--mode modules`:
 ```bash
 python canvas_scraper.py \
   --course-url https://canvas.school.edu/courses/12345 \
-  --mode modules \
   --session "_csrf_token=abc; canvas_session=xyz"
 ```
-
-For `--mode discussions` or `--mode both`, pass the specific discussion thread URL:
-```bash
-python canvas_scraper.py \
-  --course-url https://canvas.school.edu/courses/12345/discussion_topics/67890 \
-  --mode discussions \
-  --session "_csrf_token=abc; canvas_session=xyz"
-```
-
-> **Note:** `--mode both` scrapes one discussion thread and all modules in a single run. Because `--course-url` is a single argument, only one discussion thread can be targeted per run.
 
 ### All flags
 
 | Flag | Required | Default | Description |
 |---|---|---|---|
-| `--course-url` | ✅ | — | Course root URL (`/courses/ID`) for modules; specific discussion thread URL (`/courses/ID/discussion_topics/ID`) for discussions or both |
-| `--mode` | ✅ | — | What to scrape: `discussions`, `modules`, or `both` |
+| `--course-url` | ✅ | — | Course root URL, e.g. `https://canvas.school.edu/courses/12345` |
 | `--session` | ✅ | — | Raw cookie string from your browser (see below) |
 | `--output` | | `Canvas_Export` | Directory to write files into |
 | `--zip` | | off | Zip the output folder when finished |
@@ -62,15 +47,13 @@ python canvas_scraper.py \
 "_csrf_token=abc123; canvas_session=xyz789"
 ```
 
-> The script validates the cookie on startup and exits immediately if you have been redirected to the login page.
+> The script validates the cookie on startup and exits immediately if redirected to the login page.
 
 ---
 
-## Modes
+## What happens when you run it
 
-### `--mode modules`
-
-Fetches the course's Modules page and lists every module interactively:
+The script fetches the course's Modules page and presents a numbered list:
 
 ```
 ============================================================
@@ -82,39 +65,31 @@ Available Modules:
 Enter a comma-separated list of module numbers to scrape (or 'all'/Enter to scrape everything):
 ```
 
-Enter numbers like `1,3` to scrape specific modules, or press Enter / type `all` to scrape everything.
-
-Each module item is saved as a standalone HTML file with all images, videos, and attachments downloaded locally alongside it. Supported item types: pages, assignments, quizzes, discussions, and files.
-
-#### Quiz output
-
-Quizzes are exported with colour-coded results — correct answers highlighted in green, wrong selections in red. **The content of the exported quiz depends entirely on what Canvas shows your account.** Specifically:
-
-- If the quiz's **"Let Students See Their Responses"** setting is enabled, your selected answers will be visible in the export.
-- If **"Let Students See the Correct Answers"** is also enabled, the correct answers will be shown alongside your selections.
-- If neither setting is enabled, or the quiz window has closed, the export will only contain the questions and whatever Canvas renders for your account at the time of scraping.
-
-**Output structure:**
-
-```
-Canvas_Export/
-└── Modules/
-    ├── Week 1 — Introduction/
-    │   ├── 01 - Syllabus.html
-    │   ├── 02 - Reading Notes.html
-    │   ├── media/
-    │   └── attachments/
-    └── Week 2 — The Civil War/
-        ├── 01 - Lecture Slides.html
-        ├── 02 - Quiz American Yawp Ch 15.html
-        ...
-```
+Enter numbers like `1,3` to scrape specific modules, or press Enter / type `all` for everything. Each selected module is then processed item by item.
 
 ---
 
-### `--mode discussions`
+## How each item type is handled
 
-Loads the discussion thread in a headless Chromium browser, automatically handles multi-page threads by clicking through all pagination buttons, then lists every participant:
+### Pages and assignments
+
+Plain HTML pages are fetched with `requests` and saved directly. Assignment pages are rendered entirely by JavaScript — when the script detects an empty React shell, it automatically launches a headless Chromium browser (Playwright) to load the page and extract a clean card showing:
+
+- Due date
+- Points / grade
+- Attempts allowed
+- Status (Missing / Late / Submitted / Graded)
+- Assignment description (if one exists)
+
+> **Note on assignment descriptions:** Canvas controls whether students can see their submission responses and scores via quiz/assignment result settings. The exported output reflects exactly what your account can see at the time of scraping.
+
+### Quizzes
+
+Exported with colour-coded results — correct answers highlighted green, wrong selections red. What appears in the export depends on the instructor's quiz settings ("Let Students See Their Responses" / "Let Students See the Correct Answers").
+
+### Discussions
+
+Discussion items inside a module are automatically scraped with the full Playwright headless browser. You will be prompted to select one or more participants by number (comma-separated):
 
 ```
 ============================================================
@@ -126,55 +101,56 @@ Participants found in this Discussion:
 Enter comma-separated numbers of the people whose replies you want to scrape:
 ```
 
-Select one person by number. The script collects every reply that person made across all pages and writes a single clean HTML file containing only their posts, with avatars, timestamps, and embedded media.
+Each selected person gets their own HTML file containing the discussion prompt followed by all of their replies with avatars and timestamps.
 
-**Output structure:**
+### Files
 
-```
-Canvas_Export/
-└── Discussions/
-    └── GROUP DISCUSSION Introduce Yourselves Please/
-        ├── replies_Alice Johnson.html
-        ├── media/
-        └── attachments/
-```
+Downloaded directly into the module's `attachments/` folder. A stub HTML page is written so the module listing stays complete.
+
+### External links and tools
+
+All external URLs and LTI tool links found in a module are collected into a single text file at `attachments/external_links.txt`, one entry per link (title on one line, URL on the next).
 
 ---
 
-### `--mode both`
+## Output structure
 
-Runs the discussions scraper first (using the thread URL provided via `--course-url`), then the modules scraper (navigating to the course's modules page automatically). Both interactive prompts appear in sequence.
-
-```bash
-python canvas_scraper.py \
-  --course-url https://canvas.school.edu/courses/12345/discussion_topics/67890 \
-  --mode both \
-  --session "_csrf_token=abc; canvas_session=xyz"
 ```
+Canvas_Export/
+└── Modules/
+    ├── Week 1 — Introduction/
+    │   ├── 01 - Syllabus.html
+    │   ├── 02 - Reading Notes.html
+    │   ├── 03 - Introduction Discussion/
+    │   │   ├── Discussions/
+    │   │   │   └── Introduction Discussion/
+    │   │   │       ├── replies_Alice Johnson.html
+    │   │   │       ├── media/
+    │   │   │       └── attachments/
+    │   ├── media/
+    │   └── attachments/
+    │       ├── lecture_slides.pdf
+    │       └── external_links.txt
+    └── Week 2 — The Civil War/
+        ├── 01 - Lecture Slides.html
+        ├── 02 - Quiz American Yawp Ch 15.html
+        └── attachments/
+            └── external_links.txt
+```
+
+Every HTML file is self-contained with embedded CSS — readable in any browser with no internet connection.
 
 ---
 
 ## Resume support
 
-The scraper writes a `.scraper_state.json` file inside the output directory to track completed items. If the run is interrupted (Ctrl-C or network error), re-running the same command will skip already-finished items and pick up where it left off.
-
----
-
-## Output format
-
-Every exported page is a self-contained HTML file with:
-
-- Embedded CSS — readable in any browser with no internet connection.
-- Locally downloaded images and videos (saved to a `media/` subfolder).
-- Locally downloaded file attachments (saved to an `attachments/` subfolder).
-- Quiz results styled with colour-coded correct/incorrect answers (subject to quiz result visibility settings — see above).
-- Discussion threads formatted with author avatars and timestamps.
+A `.scraper_state.json` file is written inside the output directory to track completed items. If the run is interrupted (Ctrl-C or a network error), re-running the same command skips already-finished items and picks up where it left off.
 
 ---
 
 ## Notes
 
-- **Sessions expire.** Canvas session cookies typically last a few hours. If you see an authentication error mid-run, grab a fresh cookie and re-run — completed items will be skipped.
+- **Sessions expire.** Canvas cookies typically last a few hours. If you see an authentication error mid-run, grab a fresh cookie and re-run — completed items are skipped.
 - **Windows path limits.** Module and item names are capped at 55 and 60 characters respectively to stay within Windows' 260-character MAX_PATH limit.
-- **Media downloads are best-effort.** Canvas Studio / Arc video embeds are attempted through multiple resolution strategies; inaccessible media is replaced with a visible warning box rather than silently skipped.
+- **Media downloads are best-effort.** Canvas Studio / Arc video embeds are attempted through multiple resolution strategies. Inaccessible media is replaced with a visible warning box rather than silently dropped.
 - **No API calls are made.** Everything is scraped from the same HTML your browser sees, so it respects whatever visibility your account has.
